@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1117">
+  <title>Build Status</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --line: #21262d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --ok: #3fb950;
+      --fail: #f85149;
+      --run: #d29922;
+      --off: #6e7681;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #repo {
+      font-size: clamp(18px, 4.5vw, 28px);
+      font-weight: 600;
+      color: var(--muted);
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #repo b { color: var(--text); }
+    #updated { font-size: 14px; color: var(--muted); white-space: nowrap; }
+
+    /* Big status of the latest run */
+    #hero {
+      border-radius: 16px;
+      padding: clamp(20px, 5vw, 36px);
+      background: var(--panel);
+      border: 2px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: clamp(16px, 4vw, 32px);
+    }
+    #hero.ok   { border-color: var(--ok); }
+    #hero.fail { border-color: var(--fail); }
+    #hero.run  { border-color: var(--run); }
+    #hero .dot { width: clamp(56px, 14vw, 96px); height: clamp(56px, 14vw, 96px); }
+    #heroText { min-width: 0; }
+    #heroState {
+      font-size: clamp(36px, 10vw, 72px);
+      font-weight: 700;
+      line-height: 1;
+    }
+    #hero.ok   #heroState { color: var(--ok); }
+    #hero.fail #heroState { color: var(--fail); }
+    #hero.run  #heroState { color: var(--run); }
+    #heroTitle {
+      margin-top: 10px;
+      font-size: clamp(18px, 4.5vw, 28px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #heroMeta { margin-top: 6px; font-size: clamp(14px, 3.5vw, 20px); color: var(--muted); }
+
+    /* Run list */
+    ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+    li {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 4px;
+      border-bottom: 1px solid var(--line);
+    }
+    li:last-child { border-bottom: none; }
+    li a { color: inherit; text-decoration: none; min-width: 0; }
+    .title {
+      font-size: clamp(16px, 4vw, 22px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .meta { font-size: clamp(13px, 3.2vw, 16px); color: var(--muted); margin-top: 2px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .branch {
+      display: inline-block;
+      padding: 0 6px;
+      border-radius: 6px;
+      background: #1f6feb33;
+      color: #79c0ff;
+      font-family: ui-monospace, Consolas, monospace;
+    }
+    .ago { font-size: clamp(13px, 3.2vw, 16px); color: var(--muted); text-align: right; white-space: nowrap; }
+
+    /* Status dots */
+    .dot {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--off);
+      flex: none;
+    }
+    .dot.ok   { background: var(--ok); }
+    .dot.fail { background: var(--fail); }
+    .dot.run  { background: var(--run); animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.35; transform: scale(0.85); } }
+
+    /* Messages + setup */
+    #message {
+      padding: 16px; border-radius: 12px; background: var(--panel); color: var(--muted);
+      font-size: 16px; display: none;
+    }
+    #message.show { display: block; }
+    #message.error { color: var(--fail); }
+    form { display: none; gap: 10px; flex-wrap: wrap; }
+    form.show { display: flex; }
+    form input {
+      flex: 1 1 240px; font-size: 18px; padding: 12px 14px; border-radius: 10px;
+      border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    }
+    form button {
+      font-size: 18px; padding: 12px 20px; border-radius: 10px; border: none;
+      background: #238636; color: white; font-weight: 600; cursor: pointer;
+    }
+    form button.secondary { background: var(--panel); color: var(--muted); border: 1px solid var(--line); }
+    form .hint { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+    footer { margin-top: auto; font-size: 13px; color: var(--muted); text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <button id="repo" title="Change repository">—</button>
+    <span id="updated"></span>
+  </header>
+
+  <form id="setup">
+    <input id="repoInput" placeholder="owner/repository" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <input id="tokenInput" type="password" placeholder="Access token (private repos only)" autocomplete="off" spellcheck="false">
+    <button type="submit">Show</button>
+    <button type="button" id="forgetToken" class="secondary" hidden>Forget token</button>
+    <p class="hint">The token is saved only in this browser on this device. Use a fine-grained token with
+      read-only <b>Actions</b> access to just this repository. Leave the field empty to keep the saved one.</p>
+  </form>
+
+  <div id="message"></div>
+
+  <section id="hero" hidden>
+    <div class="dot" id="heroDot"></div>
+    <div id="heroText">
+      <div id="heroState"></div>
+      <div id="heroTitle"></div>
+      <div id="heroMeta"></div>
+    </div>
+  </section>
+
+  <ul id="runs"></ul>
+
+  <footer id="footer"></footer>
+
+  <script>
+    // ---- Settings -------------------------------------------------------
+    // Repository comes from ?repo=owner/name, else the last one used on this device.
+    // The access token (for private repos) is only ever kept in this browser's storage —
+    // never in the URL or in this file.
+    const RUN_COUNT = 8;
+    // Without a token GitHub allows 60 requests/hour; with one, 5000/hour.
+    const pollSeconds = () => (token ? 60 : 120);
+
+    const $ = (id) => document.getElementById(id);
+    const store = {
+      get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+      set(key, v) { try { localStorage.setItem(key, v); } catch { /* private mode etc. */ } },
+      remove(key) { try { localStorage.removeItem(key); } catch { /* ignore */ } },
+    };
+
+    let repo = new URLSearchParams(location.search).get('repo') || store.get('status.repo') || '';
+    let token = store.get('status.token') || '';
+    let runs = [];
+    let lastUpdate = null;
+    let timer = null;
+
+    // ---- Helpers --------------------------------------------------------
+    function classify(run) {
+      if (run.status !== 'completed') return { cls: 'run', label: 'Running' };
+      switch (run.conclusion) {
+        case 'success':         return { cls: 'ok',   label: 'Passing' };
+        case 'failure':
+        case 'timed_out':
+        case 'startup_failure': return { cls: 'fail', label: 'Failed' };
+        case 'cancelled':       return { cls: '',     label: 'Cancelled' };
+        default:                return { cls: '',     label: run.conclusion || 'Done' };
+      }
+    }
+
+    function ago(iso) {
+      const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+      if (s < 45)    return 'just now';
+      if (s < 3600)  return Math.round(s / 60) + ' min ago';
+      if (s < 86400) return Math.round(s / 3600) + ' h ago';
+      return Math.round(s / 86400) + ' d ago';
+    }
+
+    function duration(run) {
+      const start = new Date(run.run_started_at || run.created_at).getTime();
+      const end   = run.status === 'completed' ? new Date(run.updated_at).getTime() : Date.now();
+      const s = Math.max(0, Math.round((end - start) / 1000));
+      return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
+    }
+
+    function firstLine(text) { return (text || '').split('\n')[0]; }
+
+    function el(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    function showMessage(text, isError) {
+      const m = $('message');
+      m.textContent = text || '';
+      m.className = text ? 'show' + (isError ? ' error' : '') : '';
+    }
+
+    // ---- Rendering ------------------------------------------------------
+    function render() {
+      const [owner, name] = repo.split('/');
+      $('repo').replaceChildren(owner ? document.createTextNode(owner + ' / ') : '', el('b', null, name || 'Pick a repository'));
+      $('updated').textContent = lastUpdate ? 'updated ' + ago(lastUpdate.toISOString()) : '';
+
+      const hero = $('hero');
+      if (!runs.length) { hero.hidden = true; $('runs').replaceChildren(); return; }
+
+      const latest = runs[0];
+      const c = classify(latest);
+      hero.hidden = false;
+      hero.className = c.cls;
+      $('heroDot').className = 'dot ' + c.cls;
+      $('heroState').textContent = c.label;
+      $('heroTitle').textContent = latest.display_title || firstLine(latest.head_commit && latest.head_commit.message);
+      $('heroMeta').textContent = `${latest.name} · ${latest.head_branch} · ${ago(latest.created_at)} · ${duration(latest)}`;
+
+      $('runs').replaceChildren(...runs.slice(1).map((run) => {
+        const k = classify(run);
+        const li = el('li');
+        li.append(el('div', 'dot ' + k.cls));
+
+        const a = el('a');
+        a.href = run.html_url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.append(el('div', 'title', run.display_title || firstLine(run.head_commit && run.head_commit.message)));
+        const meta = el('div', 'meta');
+        meta.append(el('span', 'branch', run.head_branch), document.createTextNode(`  ${run.name} · #${run.run_number}`));
+        a.append(meta);
+        li.append(a);
+
+        const right = el('div', 'ago');
+        right.append(document.createTextNode(ago(run.created_at)), el('br'), document.createTextNode(duration(run)));
+        li.append(right);
+        return li;
+      }));
+    }
+
+    // ---- Data -----------------------------------------------------------
+    async function refresh() {
+      if (!repo) return;
+      try {
+        const headers = { Accept: 'application/vnd.github+json' };
+        if (token) headers.Authorization = 'Bearer ' + token;
+        const res = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=${RUN_COUNT}`, { headers });
+        const remaining = res.headers.get('x-ratelimit-remaining');
+        const reset = res.headers.get('x-ratelimit-reset');
+
+        if (res.status === 401) {
+          showMessage('GitHub rejected the access token (expired or revoked?). Tap the repository name to enter a new one.', true);
+          runs = [];
+        } else if (res.status === 404) {
+          showMessage(token
+            ? `Can't see "${repo}". Check the name, and that the token has Actions read access to this repository.`
+            : `Can't find "${repo}". If it's private, tap the repository name and add an access token.`, true);
+          runs = [];
+        } else if (res.status === 403 && remaining !== '0') {
+          showMessage("The token doesn't have permission to read Actions for this repository.", true);
+          runs = [];
+        } else if (res.status === 403 || res.status === 429) {
+          const when = reset ? new Date(reset * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'later';
+          showMessage(`GitHub rate limit reached — will work again around ${when}.`, true);
+        } else if (!res.ok) {
+          showMessage(`GitHub returned ${res.status}. Retrying shortly.`, true);
+        } else {
+          const data = await res.json();
+          runs = data.workflow_runs || [];
+          lastUpdate = new Date();
+          showMessage(runs.length ? '' : 'No workflow runs yet. Push a commit to start one.');
+        }
+        $('footer').textContent = (token ? 'Signed in with token · ' : '')
+          + (remaining != null ? `GitHub API: ${remaining} requests left this hour` : '');
+      } catch (err) {
+        showMessage('Offline or GitHub unreachable. Retrying…', true);
+      }
+      render();
+    }
+
+    function start() {
+      $('setup').className = repo ? '' : 'show';
+      if (!repo) { showMessage('Enter a GitHub repository to watch, e.g. ocornut/imgui. Private repositories also need an access token.'); render(); return; }
+      store.set('status.repo', repo);
+      clearInterval(timer);
+      refresh();
+      timer = setInterval(refresh, pollSeconds() * 1000);
+    }
+
+    // ---- UI -------------------------------------------------------------
+    $('repo').addEventListener('click', () => {
+      $('repoInput').value = repo;
+      $('tokenInput').value = '';
+      $('tokenInput').placeholder = token ? 'Token saved — leave empty to keep it' : 'Access token (private repos only)';
+      $('forgetToken').hidden = !token;
+      $('setup').classList.toggle('show');
+      $('repoInput').focus();
+    });
+
+    $('forgetToken').addEventListener('click', () => {
+      token = '';
+      store.remove('status.token');
+      $('forgetToken').hidden = true;
+      $('tokenInput').placeholder = 'Access token (private repos only)';
+      start();
+    });
+
+    $('setup').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = $('repoInput').value.trim()
+        .replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
+      if (!/^[\w.-]+\/[\w.-]+$/.test(v)) { showMessage('Use the form owner/repository', true); return; }
+      const newToken = $('tokenInput').value.trim();
+      if (newToken) {
+        token = newToken;
+        store.set('status.token', token);
+      }
+      $('tokenInput').value = '';
+      repo = v;
+      runs = [];
+      start();
+    });
+
+    // Keep "x min ago" and running durations fresh between polls
+    setInterval(render, 15000);
+
+    // Refresh straight away when the screen comes back on
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') { refresh(); requestWakeLock(); }
+    });
+
+    // Ask the phone to keep the screen on (only works on https or localhost)
+    async function requestWakeLock() {
+      try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch { /* not allowed here */ }
+    }
+    requestWakeLock();
+
+    start();
+  </script>
+</body>
+</html>
