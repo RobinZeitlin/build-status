@@ -204,8 +204,13 @@
     let timer = null;
 
     // Stay well under GitHub's limits: 60 requests/hour without a token, 5000 with one.
+    // Check more often while any build is queued or running, so it flips to passed/failed quickly.
+    function anyRunning() {
+      return repos.some((r) => state[r] && state[r].runs && state[r].runs.some((run) => run.status !== 'completed'));
+    }
     function pollSeconds() {
-      return token ? Math.max(60, repos.length * 15) : Math.max(120, repos.length * 70);
+      if (token) return anyRunning() ? 15 : 45;
+      return Math.max(anyRunning() ? 60 : 120, repos.length * 70);
     }
 
     // ---- Helpers --------------------------------------------------------
@@ -320,7 +325,9 @@
       try {
         const headers = { Accept: 'application/vnd.github+json' };
         if (token) headers.Authorization = 'Bearer ' + token;
-        const res = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=8`, { headers });
+        // cache: 'no-store' — GitHub marks these responses cacheable for 60s, and Chrome would
+        // otherwise keep showing the old status until a manual reload.
+        const res = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=8`, { headers, cache: 'no-store' });
         const remaining = res.headers.get('x-ratelimit-remaining');
         const reset = res.headers.get('x-ratelimit-reset');
         if (remaining != null) rateRemaining = remaining;
@@ -352,15 +359,24 @@
       }
     }
 
+    let refreshing = false;
     async function refresh() {
-      if (!repos.length) return;
-      await Promise.all(repos.map(fetchRepo));
-      lastUpdate = new Date();
-      render();
+      if (!repos.length || refreshing) return;
+      refreshing = true;
+      clearTimeout(timer);
+      try {
+        await Promise.all(repos.map(fetchRepo));
+        lastUpdate = new Date();
+        render();
+      } finally {
+        refreshing = false;
+        // Re-plan the next check each time, since the speed depends on whether something is running
+        timer = setTimeout(refresh, pollSeconds() * 1000);
+      }
     }
 
     function start() {
-      clearInterval(timer);
+      clearTimeout(timer);
       if (!repos.length) {
         openSettings();
         showMessage('Add one or more GitHub repositories to watch.');
@@ -372,7 +388,6 @@
       store.remove('status.repo');
       render();
       refresh();
-      timer = setInterval(refresh, pollSeconds() * 1000);
     }
 
     // ---- Settings UI ----------------------------------------------------
